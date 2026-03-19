@@ -1,23 +1,23 @@
 import streamlit as st
 
-# --- FUNKCIJA ZA IZRAČUN PO LOGIKI ZPIZ (2026) ---
-def izracun_zpiz_dohodnina(bruto_dohodek_vsi, bruto_pokojnina_letna, starost):
-    # Mesečni parametri iz tvojih slik
-    SPLUSNA_MESEČNA = 438.33
-    SENIORSKA_MESEČNA = 131.50 if starost >= 70 else 0.0
-    OZP_MESEČNI = 37.17
-    PDO_STOPNJA = 0.01  # 1% za dolgotrajno oskrbo
+# --- FUNKCIJA ZA IZRAČUN DOHODNINE (LOGIKA 2026) ---
+def izracun_dohodnine_2026(bruto_vsi, bruto_pok_letna, starost):
+    """
+    Izračuna letno dohodnino upoštevajoč vse olajšave in prispevke.
+    """
+    # Parametri iz tvojih slik (leto 2026)
+    SPLUSNA_LETNA = 438.33 * 12
+    SENIORSKA_LETNA = 131.50 * 12 if starost >= 70 else 0
+    OZP_LETNI = 37.17 * 12 # Obvezni zdravstveni prispevek
+    PDO_STOPNJA = 0.01    # Prispevek za dolgotrajno oskrbo (1%)
     
-    # Preračun na letno raven
-    letna_splosna = SPLUSNA_MESEČNA * 12
-    letna_seniorska = SENIORSKA_MESEČNA * 12
-    letni_ozp = OZP_MESEČNI * 12
-    letni_pdo = bruto_pokojnina_letna * PDO_STOPNJA
+    # 1. Prispevki, ki zmanjšujejo davčno osnovo (samo od pokojnine)
+    prispevki = OZP_LETNI + (bruto_pok_letna * PDO_STOPNJA)
     
-    # 1. Zmanjšana davčna osnova (Bruto - Prispevki - Olajšave)
-    osnova = max(0, bruto_dohodek_vsi - letni_ozp - letni_pdo - letna_splosna - letna_seniorska)
+    # 2. Zmanjšana davčna osnova
+    osnova = max(0, bruto_vsi - prispevki - SPLUSNA_LETNA - SENIORSKA_LETNA)
     
-    # 2. Obračun dohodnine po lestvici (informativni razredi)
+    # 3. Dohodninska lestvica 2026 (informativni razredi)
     if osnova <= 9000:
         davek_po_lestvici = osnova * 0.16
     elif osnova <= 25000:
@@ -25,48 +25,94 @@ def izracun_zpiz_dohodnina(bruto_dohodek_vsi, bruto_pokojnina_letna, starost):
     else:
         davek_po_lestvici = 1440 + 4160 + (osnova - 25000) * 0.33
         
-    # 3. Pokojninska olajšava (13,5% od bruto pokojnine)
-    pokojninska_olajsava = bruto_pokojnina_letna * 0.135
+    # 4. Pokojninska olajšava (13,5% od bruto pokojnine)
+    # To je tisti "davčni dobropis", ki se odšteje od že izračunanega davka
+    olajsava_zpiz = bruto_pok_letna * 0.135
     
-    # Končni znesek (ne more biti manj kot 0)
-    koncni_davek = max(0, davek_po_lestvici - pokojninska_olajsava)
-    return round(koncni_davek, 2)
+    return max(0, davek_po_lestvici - olajsava_zpiz)
 
-# --- STREAMLIT UI ---
-st.set_page_config(page_title="ZPIZ Kalkulator 2026", layout="centered")
-st.title("🛡️ Svetovalec: Optimizacija PDPZ")
+# --- KONFIGURACIJA STRANI ---
+st.set_page_config(page_title="Svetovalec za PDPZ 2026", layout="wide")
 
-# Vnosi
-col_a, col_b = st.columns(2)
-with col_a:
-    starost = st.number_input("Starost stranke", value=65)
-    bruto_pok_mesec = st.number_input("Bruto pokojnina (mesečno) €", value=1700.0)
-with col_b:
-    pdpz_kapital = st.number_input("Sredstva na PDPZ računu €", value=20000.0)
-    renta_mesec = st.number_input("Ponujena mesečna renta €", value=100.0)
+st.title("🛡️ Davčni kalkulator za prehod v pokoj (2026)")
+st.markdown("Orodje za svetovalce na terenu: Primerjava obdavčitve enkratnega odkupa in mesečne rente.")
 
-# Izračun osnovnih letnih prihodkov (brez PDPZ)
-letna_pok_bruto = bruto_pok_mesec * 12
-davek_brez = izracun_zpiz_dohodnina(letna_pok_bruto, letna_pok_bruto, starost)
+# --- STRANSKI MENI ZA VNOS PODATKOV ---
+with st.sidebar:
+    st.header("1. Osnovni podatki")
+    starost = st.number_input("Starost stranke (v letu odmere)", min_value=50, max_value=100, value=65)
+    bruto_pok_mes = st.number_input("Mesečna bruto pokojnina (€)", value=1700.0, step=50.0)
+    
+    st.header("2. PDPZ Sredstva")
+    pdpz_kapital = st.number_input("Skupno stanje na PDPZ računu (€)", value=30000.0, step=1000.0)
+    renta_mes_bruto = st.number_input("Ocenjena mesečna bruto renta (€)", value=400.0, step=10.0)
 
-# SCENARIJ 1: Enkratni odkup
-davek_odkup = izracun_zpiz_dohodnina(letna_pok_bruto + pdpz_kapital, letna_pok_bruto, starost)
-dodaten_davek_odkup = davek_odkup - davek_brez
+# --- IZRAČUN LETNIH OSNOV ---
+letna_pok_bruto = bruto_pok_mes * 12
+letna_renta_bruto = renta_mes_bruto * 12
 
-# SCENARIJ 2: Renta (50% obdavčitev)
-letna_renta_bruto = renta_mesec * 12
-davek_renta = izracun_zpiz_dohodnina(letna_pok_bruto + (letna_renta_bruto * 0.5), letna_pok_bruto, starost)
-dodaten_davek_renta = davek_renta - davek_brez
+# Osnovni davek (če bi imel samo pokojnino)
+davek_samo_pokojnina = izracun_dohodnine_2026(letna_pok_bruto, letna_pok_bruto, starost)
 
-# --- PRIKAZ ZA STRANKO ---
+# --- SCENARIJ A: ENKRATNI ODKUP ---
+# Celoten kapital se šteje v letno osnovo
+davek_skupaj_odkup = izracun_dohodnine_2026(letna_pok_bruto + pdpz_kapital, letna_pok_bruto, starost)
+davek_na_pdpz_odkup = davek_skupaj_odkup - davek_samo_pokojnina
+neto_izplacilo_odkup = pdpz_kapital - davek_na_pdpz_odkup
+
+# --- SCENARIJ B: MESEČNA RENTA ---
+# Le 50% rente se šteje v letno osnovo
+davek_skupaj_renta = izracun_dohodnine_2026(letna_pok_bruto + (letna_renta_bruto * 0.5), letna_pok_bruto, starost)
+davek_na_pdpz_renta_letno = davek_skupaj_renta - davek_samo_pokojnina
+neto_renta_letna = letna_renta_bruto - davek_na_pdpz_renta_letno
+
+# Pravilo akontacije: 50% rente > 160 EUR -> 25% akontacije od 50% zneska
+davcna_osnova_renta_mes = renta_mes_bruto * 0.5
+akontacija_mesecna = 0.0
+if davcna_osnova_renta_mes >= 160.0:
+    akontacija_mesecna = davcna_osnova_renta_mes * 0.25
+
+# --- PRIKAZ REZULTATOV ---
 st.divider()
-st.subheader("Primerjava dodatnega davka")
 
-c1, c2 = st.columns(2)
-c1.metric("Enkratni odkup", f"{dodaten_davek_odkup:,.2f} €", delta="DAVEK", delta_color="inverse")
-c2.metric("Mesečna renta", f"{dodaten_davek_renta:,.2f} €", delta="DAVEK", delta_color="normal")
+col1, col2 = st.columns(2)
 
-st.info(f"**Nasvet:** Z izbiro rente stranka prihrani **{dodaten_davek_odkup - dodaten_davek_renta:,.2f} €** pri dohodnini.")
+with col1:
+    st.error("### 🔴 ENKRATNI ODKUP")
+    st.metric("Neto izplačilo stranki", f"{neto_izplacilo_odkup:,.2f} €")
+    st.write(f"**Plačana dohodnina:** {davek_na_pdpz_odkup:,.2f} €")
+    st.write(f"**Dejanska obdavčitev:** {round((davek_na_pdpz_odkup/pdpz_kapital)*100, 2)} %")
+    st.caption("Visoka enkratna osnova povzroči skok v 26% ali 33% davčni razred.")
 
-if starost < 70:
-    st.warning(f"Stranka je mlajša od 70 let, zato ne koristi seniorske olajšave (131,50 €/mesec). To pomeni, da vsak dodaten dohodek (odkup) hitreje zapade v višjo obdavčitev.")
+with col2:
+    st.success("### 🟢 MESEČNA RENTA")
+    st.metric("Dejanska neto renta (letno povprečje)", f"{(neto_renta_letna/12):,.2f} €/mes")
+    st.write(f"**Letni strošek dohodnine:** {davek_na_pdpz_renta_letno:,.2f} €")
+    st.write(f"**Dejanska obdavčitev:** {round((davek_na_pdpz_renta_letno/letna_renta_bruto)*100, 2)} %")
+    
+    if akontacija_mesecna > 0:
+        st.warning(f"⚠️ **Akontacija družbe:** Ker 50% rente ({davcna_osnova_renta_mes}€) presega 160€, bo pokojninska družba mesečno odvedla **{akontacija_mesecna:,.2f} €** akontacije.")
+    else:
+        st.info("ℹ️ **Brez mesečne akontacije:** 50% osnove rente je pod 160€, zato med letom ni odtegljaja.")
+
+st.divider()
+
+# --- TABELA ZA SVETOVALCA ---
+st.subheader("Primerjava izračuna (na letni ravni)")
+st.table({
+    "Opis": ["Bruto prejemki", "Davčna osnova (z olajšavami)", "Skupna letna dohodnina", "Neto vpliv PDPZ"],
+    "Enkratni odkup": [
+        f"{letna_pok_bruto + pdpz_kapital:,.2f} €",
+        f"{max(0, (letna_pok_bruto + pdpz_kapital) - (438.33*12) - (131.50*12 if starost>=70 else 0) - (37.17*12 + letna_pok_bruto*0.01)):,.2f} €",
+        f"{davek_skupaj_odkup:,.2f} €",
+        f"- {davek_na_pdpz_odkup:,.2f} €"
+    ],
+    "Mesečna renta": [
+        f"{letna_pok_bruto + letna_renta_bruto:,.2f} €",
+        f"{max(0, (letna_pok_bruto + letna_renta_bruto*0.5) - (438.33*12) - (131.50*12 if starost>=70 else 0) - (37.17*12 + letna_pok_bruto*0.01)):,.2f} €",
+        f"{davek_skupaj_renta:,.2f} €",
+        f"- {davek_na_pdpz_renta_letno:,.2f} €"
+    ]
+})
+
+st.markdown(f"**Prihranek:** Z izbiro rente stranka obdrži **{davek_na_pdpz_odkup - davek_na_pdpz_renta_letno:,.2f} €** več svojega denarja.")
