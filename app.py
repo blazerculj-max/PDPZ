@@ -2,115 +2,96 @@ import streamlit as st
 
 # --- FUNKCIJA ZA IZRAČUN DOHODNINE (LOGIKA 2026) ---
 def izracun_dohodnine_2026(bruto_vsi, bruto_pok_letna, starost):
-    """
-    Izračuna letno dohodnino upoštevajoč vse olajšave in prispevke po slikah ZPIZ.
-    """
-    # Parametri iz tvojih slik (leto 2026)
+    # Parametri 2026 iz slik
     SPLUSNA_LETNA = 438.33 * 12
     SENIORSKA_LETNA = 131.50 * 12 if starost >= 70 else 0
-    OZP_LETNI = 37.17 * 12 # Obvezni zdravstveni prispevek
-    PDO_STOPNJA = 0.01    # Prispevek za dolgotrajno oskrbo (1%)
+    OZP_LETNI = 37.17 * 12 
+    PDO_STOPNJA = 0.01    # 1% za dolgotrajno oskrbo
     
-    # 1. Prispevki, ki zmanjšujejo davčno osnovo (od pokojnine)
+    # Prispevki (zmanjšujejo osnovo)
     prispevki = OZP_LETNI + (bruto_pok_letna * PDO_STOPNJA)
     
-    # 2. Zmanjšana davčna osnova
+    # Davčna osnova
     osnova = max(0, bruto_vsi - prispevki - SPLUSNA_LETNA - SENIORSKA_LETNA)
     
-    # 3. Dohodninska lestvica 2026
+    # Lestvica 2026
     if osnova <= 9000:
-        davek_po_lestvici = osnova * 0.16
+        davek = osnova * 0.16
     elif osnova <= 25000:
-        davek_po_lestvici = 1440 + (osnova - 9000) * 0.26
+        davek = 1440 + (osnova - 9000) * 0.26
     else:
-        davek_po_lestvici = 1440 + 4160 + (osnova - 25000) * 0.33
+        davek = 1440 + 4160 + (osnova - 25000) * 0.33
         
-    # 4. Pokojninska olajšava (13,5% od bruto pokojnine)
-    # Odševa se direktno od odmerjenega davka
+    # Pokojninska olajšava (13,5% od bruto pokojnine)
     olajsava_zpiz = bruto_pok_letna * 0.135
     
-    return max(0, davek_po_lestvici - olajsava_zpiz)
+    return max(0, davek - olajsava_zpiz)
 
-# --- KONFIGURACIJA STRANI ---
-st.set_page_config(page_title="Svetovalec za PDPZ 2026", layout="wide")
+# --- UI NASTAVITVE ---
+st.set_page_config(page_title="PDPZ Svetovalec 2026", layout="wide")
+st.title("🛡️ Izračun odkupne vrednosti in davčne optimizacije (2026)")
 
-st.title("🛡️ Davčni kalkulator za prehod v pokoj (2026)")
-st.markdown("Orodje za svetovalce: Primerjava obdavčitve enkratnega odkupa in mesečne rente po zakonodaji ZPIZ/ZDoh-2.")
-
-# --- STRANSKI MENI ZA VNOS PODATKOV ---
 with st.sidebar:
-    st.header("1. Osnovni podatki")
-    starost = st.number_input("Starost stranke", min_value=50, max_value=100, value=65)
-    bruto_pok_mes = st.number_input("Mesečna bruto pokojnina (€)", value=1700.0, step=50.0)
+    st.header("Vhodni podatki")
+    starost = st.number_input("Starost stranke", value=65)
+    bruto_pok_mes = st.number_input("Mesečna bruto pokojnina (€)", value=1700.0)
     
-    st.header("2. PDPZ Sredstva")
-    pdpz_kapital = st.number_input("Skupno stanje na računu (€)", value=30000.0, step=1000.0)
-    renta_mes_bruto = st.number_input("Mesečna bruto renta (€)", value=400.0, step=10.0)
+    st.header("Sredstva PDPZ")
+    pdpz_kapital = st.number_input("Skupno stanje na PDPZ računu (€)", value=30000.0)
+    renta_mes_bruto = st.number_input("Mesečna bruto renta (€)", value=400.0)
 
-# --- IZRAČUN LETNIH OSNOV ---
+# --- IZRAČUNI ---
 letna_pok_bruto = bruto_pok_mes * 12
-letna_renta_bruto = renta_mes_bruto * 12
+davek_osnova = izracun_dohodnine_2026(letna_pok_bruto, letna_pok_bruto, starost)
 
-# Osnovni davek (samo pokojnina)
-davek_samo_pokojnina = izracun_dohodnine_2026(letna_pok_bruto, letna_pok_bruto, starost)
-
-# --- SCENARIJ A: ENKRATNI ODKUP ---
+# SCENARIJ: ODKUP (Takojšen odtegljaj 25% + Letni poračun)
+akontacija_odkup_25 = pdpz_kapital * 0.25
 davek_skupaj_odkup = izracun_dohodnine_2026(letna_pok_bruto + pdpz_kapital, letna_pok_bruto, starost)
-davek_na_pdpz_odkup = davek_skupaj_odkup - davek_samo_pokojnina
-neto_izplacilo_odkup = pdpz_kapital - davek_na_pdpz_odkup
+dejanski_davek_pdpz = davek_skupaj_odkup - davek_osnova
+morebitno_doplacilo = max(0, dejanski_davek_pdpz - akontacija_odkup_25)
 
-# --- SCENARIJ B: MESEČNA RENTA ---
+# SCENARIJ: RENTA (Pravilo 160€)
+letna_renta_bruto = renta_mes_bruto * 12
 davek_skupaj_renta = izracun_dohodnine_2026(letna_pok_bruto + (letna_renta_bruto * 0.5), letna_pok_bruto, starost)
-davek_na_pdpz_renta_letno = davek_skupaj_renta - davek_samo_pokojnina
-neto_renta_letna = letna_renta_bruto - davek_na_pdpz_renta_letno
-
-# NOVO PRAVILO AKONTACIJE: 
-# Če je celotna mesečna renta >= 160 EUR -> 12,5% akontacije od celotnega zneska
-akontacija_mesecna = 0.0
-if renta_mes_bruto >= 160.0:
-    akontacija_mesecna = renta_mes_bruto * 0.125
+dejanski_davek_renta = davek_skupaj_renta - davek_osnova
+akontacija_renta = renta_mes_bruto * 0.125 if renta_mes_bruto >= 160 else 0
 
 # --- PRIKAZ REZULTATOV ---
 st.divider()
-
 col1, col2 = st.columns(2)
 
 with col1:
     st.error("### 🔴 ENKRATNI ODKUP")
-    st.metric("Neto izplačilo stranki", f"{neto_izplacilo_odkup:,.2f} €")
-    st.write(f"**Plačana dohodnina:** {davek_na_pdpz_odkup:,.2f} €")
-    st.write(f"**Dejanska obdavčitev:** {round((davek_na_pdpz_odkup/pdpz_kapital)*100, 2)} %")
-    st.caption("Visoka enkratna osnova povzroči skok v 26% ali 33% davčni razred.")
+    st.write(f"**Bruto znesek:** {pdpz_kapital:,.2f} €")
+    st.write(f"**Takojšen odtegljaj (25% akontacija):** -{akontacija_odkup_25:,.2f} €")
+    st.write(f"**Predviden poračun dohodnine:** -{morebitno_doplacilo:,.2f} €")
+    st.subheader(f"Končni NETO: {pdpz_kapital - dejanski_davek_pdpz:,.2f} €")
+    st.caption(f"Skupna obdavčitev odkupa znaša {round((dejanski_davek_pdpz/pdpz_kapital)*100, 1)} %.")
 
 with col2:
     st.success("### 🟢 MESEČNA RENTA")
-    st.metric("Dejanska neto renta (povprečje)", f"{(neto_renta_letna/12):,.2f} €/mes")
-    st.write(f"**Letni strošek dohodnine:** {davek_na_pdpz_renta_letno:,.2f} €")
-    st.write(f"**Dejanska obdavčitev:** {round((davek_na_pdpz_renta_letno/letna_renta_bruto)*100, 2)} %")
-    
-    if akontacija_mesecna > 0:
-        st.warning(f"⚠️ **Mesečna akontacija:** Ker je renta {renta_mes_bruto}€ (>= 160€), bo družba mesečno odvedla **{akontacija_mesecna:,.2f} €** (12,5%).")
+    st.write(f"**Bruto mesečna renta:** {renta_mes_bruto:,.2f} €")
+    if akontacija_renta > 0:
+        st.write(f"**Mesečna akontacija (12,5%):** -{akontacija_renta:,.2f} €")
     else:
-        st.info("ℹ️ **Brez mesečne akontacije:** Renta je pod 160€, zato med letom ni odtegljaja akontacije.")
+        st.write("**Mesečna akontacija:** 0,00 € (pod pragom 160€)")
+    
+    neto_renta_letno = letna_renta_bruto - dejanski_davek_renta
+    st.subheader(f"Povprečni NETO: {neto_renta_letno/12:,.2f} €/mes")
+    st.caption(f"Skupna obdavčitev rente znaša le {round((dejanski_davek_renta/letna_renta_bruto)*100, 1) if letna_renta_bruto > 0 else 0} %.")
 
 st.divider()
 
-# --- TABELA ZA SVETOVALCA ---
-st.subheader("Primerjava izračuna (na letni ravni)")
-st.table({
-    "Opis": ["Bruto prejemki", "Davčna osnova (z olajšavami)", "Skupna letna dohodnina", "Neto vpliv PDPZ"],
-    "Enkratni odkup": [
-        f"{letna_pok_bruto + pdpz_kapital:,.2f} €",
-        f"{max(0, (letna_pok_bruto + pdpz_kapital) - (438.33*12) - (131.50*12 if starost>=70 else 0) - (37.17*12 + letna_pok_bruto*0.01)):,.2f} €",
-        f"{davek_skupaj_odkup:,.2f} €",
-        f"- {davek_na_pdpz_odkup:,.2f} €"
-    ],
-    "Mesečna renta": [
-        f"{letna_pok_bruto + letna_renta_bruto:,.2f} €",
-        f"{max(0, (letna_pok_bruto + letna_renta_bruto*0.5) - (438.33*12) - (131.50*12 if starost>=70 else 0) - (37.17*12 + letna_pok_bruto*0.01)):,.2f} €",
-        f"{davek_skupaj_renta:,.2f} €",
-        f"- {davek_na_pdpz_renta_letno:,.2f} €"
-    ]
-})
+# --- KRITIČNA ARGUMENTACIJA ---
+st.subheader("Kaj to pomeni za vašo denarnico?")
+razlika = dejanski_davek_pdpz - dejanski_davek_renta
+st.info(f"""
+Zaradi progresivne lestvice v letu 2026 in ugodnosti 50% obdavčitve rente (čl. 42 ZDoh-2), 
+stranka z izbiro rente obdrži **{razlika:,.2f} €** več, kot če bi se odločila za enkratni odkup.
+""")
 
-st.markdown(f"**Zaključek:** Z izbiro rente stranka obdrži **{davek_na_pdpz_odkup - davek_na_pdpz_renta_letno:,.2f} €** več denarja.")
+st.warning("""
+**Opomba za svetovalca:** Pri enkratnem odkupu se po zakonu o PDPZ takoj odvede 25% akontacije, 
+vendar izračun zgoraj kaže, da bo stranka zaradi prehoda v višji davčni razred verjetno 
+morala doplačati razliko ob letni dohodninski napovedi.
+""")
